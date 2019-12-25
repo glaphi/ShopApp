@@ -62,3 +62,21 @@ extension UITableViewCell {
 
 }
 
+extension UIStackView {
+
+    convenience init(
+        axis: NSLayoutConstraint.Axis,
+        alignment: UIStackView.Alignment = .fill,
+        distribution: UIStackView.Distribution = .fill,
+        spacing: CGFloat = .leastNormalMagnitude
+    ) {
+        self.init()
+
+        self.axis = axis
+        self.alignment = alignment
+        self.distribution = distribution
+        self.spacing = spacing
+    }
+
+}
+

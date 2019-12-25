@@ -7,60 +7,91 @@
 //
 
 import Foundation
+import UIKit
 
-enum Page {
-    case initial
-    case previous
-    case next
+protocol UpdatesDelegate: AnyObject {
+    func updaterDidInsert(at range: Range<Int>)
+    func updaterDidReload()
+    func updaterDidLoadEverything()
 }
 
 protocol CatalogDatasource: AnyObject {
 
-    var items: [Item] { get set }
+    var delegate: UpdatesDelegate? { get set }
 
-    var totalItemsCount: Int { get set }
+    var items: [Int: Item] { get set }
 
-    var isAllLoaded: Bool { get }
+    var batchSize: Int { get set }
 
-    var currentDataTask: URLSessionDataTask? { get set }
+    var currentPage: Int { get set }
+
+    var currentItemFetchDataTask: URLSessionDataTask? { get set }
 
     var previousURL: URL? { get set }
 
     var nextURL: URL? { get set }
 
-    func fetchItems(_ page: Page, completion: OptionalErrorBlock?)
+    var isNextPageUnavailable: Bool { get }
+
+    func fetchItems(_ page: Int, completion: OptionalErrorBlock?)
+
+    func fetchImage(_ id: String, completion: @escaping (Result<UIImage, Error>) -> ())
+
 }
 
 extension CatalogDatasource {
 
-    func reset() {
-        currentDataTask?.cancel()
-        currentDataTask = nil
+    private func reset() {
+        currentItemFetchDataTask?.cancel()
+        currentItemFetchDataTask = nil
         nextURL = nil
         previousURL = nil
-        totalItemsCount = 0
+        currentPage = 0
+        items = [:]
     }
 
-    func fetchItems(_ page: Page = .initial, completion: OptionalErrorBlock? = nil) {
-        if currentDataTask != nil { currentDataTask?.cancel() }
+    private func path(for page: Int) -> String? {
 
-        if page == .initial { reset() }
+        if page == currentPage + 1 {
+            guard let path = nextURL?.pathComponents.last else { return nil }
+            return "/".appending(path)
+        }
 
-        guard let path = path(for: page) else {
-            completion?(URLError(.badURL))
+        // Previous page not in use
+
+        return nil
+    }
+
+    func fetchImage(_ id: String, completion: @escaping (Result<UIImage, Error>) -> ()) {
+        guard let url = items.first(where: { $0.value.item_id == id })?.value.image else {
             return
+        }
+        CatalogAPI.fetchImage(url, completion: completion)
+    }
+
+    func fetchItems(_ page: Int, completion: OptionalErrorBlock? = nil) {
+        if page == 0 { reset() }
+
+        guard let path = page == 0 ? CatalogAPI.Path.catalog.rawValue : path(for: page) else {
+            completion?(nil)
+            return
+        }
+
+        if currentItemFetchDataTask != nil {
+            currentItemFetchDataTask?.cancel()
+            currentItemFetchDataTask = nil
         }
 
         CatalogAPI.fetchCatalogue(
             path: path,
             taskHandler: { [weak self] task in
-                self?.currentDataTask = task
+                self?.currentItemFetchDataTask = task
             }
 
         ) { [weak self] result in
             guard let self = self else { return }
 
-            self.currentDataTask = nil
+            self.currentItemFetchDataTask = nil
 
             switch result {
             case .failure(let error):
@@ -68,26 +99,39 @@ extension CatalogDatasource {
 
             case .success(let envelop):
 
-                self.items = envelop.result
-                self.totalItemsCount = envelop.total
-                self.previousURL = envelop.prev
+                if self.items.isEmpty {
+                    // Save batch size of the first fetch
+                    self.batchSize = envelop.result.count
+                }
+
+                self.currentPage = page
+
+                if self.currentPage == 0 {
+                    self.delegate?.updaterDidReload()
+                }
+
+                self.currentItemFetchDataTask = nil
+
+                // Update recieved item in the dict
+
+                let minIndex: Int = self.currentPage * self.batchSize
+
+                for i in 0..<envelop.result.count {
+                    self.items.updateValue(envelop.result[i], forKey: minIndex + i)
+                }
+
+                 self.delegate?.updaterDidInsert(at: minIndex ..< minIndex + envelop.result.count)
+
+                // Update next page url
+
                 self.nextURL = envelop.next
+
+                if envelop.next == nil {
+                    self.delegate?.updaterDidLoadEverything()
+                }
 
                 completion?(nil)
             }
-        }
-    }
-
-    func path(for page: Page) -> String? {
-        switch page {
-        case .initial:
-            return CatalogAPI.Path.catalog.rawValue
-
-        case .previous:
-            return previousURL?.pathComponents.last
-
-        case .next:
-            return nextURL?.pathComponents.last
         }
     }
 
@@ -95,18 +139,18 @@ extension CatalogDatasource {
 
 class CatalogFetcher: CatalogDatasource {
 
-    var items: [Item] = []
+    weak var delegate: UpdatesDelegate?
 
-    var totalItemsCount: Int = 0
+    var items: [Int: Item] = [:]
 
     var previousURL: URL?
-
     var nextURL: URL?
 
-    var currentDataTask: URLSessionDataTask?
+    var currentItemFetchDataTask: URLSessionDataTask?
 
-    var isAllLoaded: Bool {
-        nextURL == nil && items.count == totalItemsCount
-    }
+    var currentPage: Int = 0
+    var batchSize: Int = 0
+
+    var isNextPageUnavailable: Bool { nextURL == nil }
 
 }

@@ -15,8 +15,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
 
+        let listController = ListController(datasource: CatalogFetcher())
+
         window = UIWindow(frame: UIScreen.main.bounds)
-        window?.rootViewController = UINavigationController(rootViewController: ListController())
+        window?.rootViewController = UINavigationController(rootViewController: listController)
         window!.makeKeyAndVisible()
 
         return true

@@ -7,12 +7,36 @@
 //
 
 import Foundation
+import UIKit
 
 struct CatalogAPI {
 
     enum Path: String {
         case catalog = "/catalog"
         case categories = "/categories"
+    }
+
+    static func fetchImage(_ url: URL, completion: @escaping (Result<UIImage, Error>) -> ()) {
+        // "https://picsum.photos/300/400/?image=751"
+
+        Network.get(
+            requestURL: url,
+            headers: Network.HTTPHeader.acceptImage,
+            cachePolicy: URLRequest.CachePolicy.reloadIgnoringCacheData,
+            taskHandlingBlock: nil,
+            completion: { result in
+                switch result {
+                case .success(let data):
+                    guard let image = UIImage(data: data) else {
+                        completion(.failure(URLError(.badServerResponse)))
+                        return
+                    }
+                    completion(.success(image))
+
+                case .failure(let error):
+                    completion(.failure(error))
+                }
+        })
     }
 
     /// Fetch items from catalog
