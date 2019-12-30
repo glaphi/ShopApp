@@ -16,10 +16,13 @@ typealias OptionalErrorBlock = (Error?) -> ()
 typealias TaskHandler = (URLSessionDataTask) -> ()
 
 
-// MARK: - Shared JSON decoder
+// MARK: - Shared
 
-let jsonDecoder = JSONDecoder()
+let jsonDecoder: JSONDecoder = JSONDecoder()
 
+var backgroundTasksStore: [Int: UIBackgroundTaskIdentifier] = [:]
+
+var padding: CGFloat = 20
 
 // MARK: - UI Utils
 
@@ -35,9 +38,16 @@ extension CGRect {
 
 extension UIViewController {
 
+    /// Present alert with specified title and message. Alert will have one acknowledgement button to dismiss
+    /// - Parameters:
+    ///   - title: alert's title
+    ///   - message: alert's message
+    ///   - completion: completion once the "OK" button is tapped
     func presentConfirmAlert(_ title: String, message: String? = nil, completion: EmptyBlock? = nil) {
 
         let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+
+        // Add centering for iPad
 
         if let popOverController = alert.popoverPresentationController {
             popOverController.sourceView = view
@@ -45,7 +55,7 @@ extension UIViewController {
             popOverController.permittedArrowDirections = []
         }
 
-        let confirmAction = UIAlertAction(title: "OK", style: .default) { _ in
+        let confirmAction = UIAlertAction(title: CustomString.alertOkButtonTitle, style: .default) { _ in
             completion?()
         }
 
@@ -64,6 +74,12 @@ extension UITableViewCell {
 
 extension UIStackView {
 
+    /// Initialize stack with axis, alignment, distribution and spacing
+    /// - Parameters:
+    ///   - axis: stack's axis
+    ///   - alignment: alignment defauls to fill
+    ///   - distribution: distribution defaults to fill
+    ///   - spacing: spacing defaults to least normal magnitude
     convenience init(
         axis: NSLayoutConstraint.Axis,
         alignment: UIStackView.Alignment = .fill,

@@ -12,67 +12,10 @@ import Foundation
 
 class Network {
 
-    enum Configuration {
-        static let scheme: String = "https"
-        static let host: String = "mobile-code-challenge.s3.eu-central-1.amazonaws.com"
-    }
-
     typealias HTTPHeader = [String : String]
     typealias HTTPMethod = String
 
-
-    /// Get JSON object from network
-    /// - Parameters:
-    ///   - scheme: defaults to https
-    ///   - host: defaults to mobile code challenge host
-    ///   - path: api path
-    ///   - headers: headers
-    ///   - cachePolicy: request cache policy
-    ///   - taskHandlingBlock:task handling block in case cancelation might be neede
-    ///   - completion: request completion
-    static func get<T: Decodable>(
-        scheme: String = Configuration.scheme,
-        host: String = Configuration.host,
-        path: String,
-        headers: [String : String],
-        cachePolicy: URLRequest.CachePolicy = .useProtocolCachePolicy,
-        taskHandlingBlock: ((URLSessionDataTask) -> ())? = nil,
-        completion: @escaping (Result<T, Error>) -> ()
-    ) {
-
-        var urlComponents = URLComponents()
-        urlComponents.scheme = scheme
-        urlComponents.host = host
-        urlComponents.path = path
-
-        guard let url = urlComponents.url else {
-            completion(.failure(URLError(.badURL)))
-            return
-        }
-
-        Network.get(
-            requestURL: url,
-            headers: headers,
-            cachePolicy: cachePolicy,
-            taskHandlingBlock: taskHandlingBlock) { result in
-
-                switch result {
-                case .success(let data):
-                    do {
-                        let decodedObject = try jsonDecoder.decode(T.self, from: data)
-                        completion(.success(decodedObject))
-                    } catch {
-                        completion(.failure(error))
-                    }
-
-                case .failure(let error):
-                    completion(.failure(error))
-                }
-        }
-    }
-
-
-    /// Get some Data from network
+    /// Get data from network
     /// - Parameters:
     ///   - url: request URL
     ///   - headers: request headers
@@ -81,7 +24,7 @@ class Network {
     ///   - completion: request completion
     static func get(
         requestURL: URL,
-        headers: [String : String],
+        headers: Network.HTTPHeader,
         cachePolicy: URLRequest.CachePolicy = .useProtocolCachePolicy,
         taskHandlingBlock: ((URLSessionDataTask) -> ())? = nil,
         completion: @escaping (Result<Data, Error>) -> ()
@@ -93,29 +36,30 @@ class Network {
             cachePolicy: cachePolicy,
             httpMethod: HTTPMethod.get,
             taskHandlingBlock: taskHandlingBlock,
-            success: { data in
-                guard let data = data else {
-                    completion(.failure(URLError(.badServerResponse)))
-                    return
-                }
-
-                completion(.success(data))
+            failure: { error in
+                completion(.failure(error))
         },
-            failure: { error in completion(.failure(error)) }
-        )
+            success: { data in
+            guard let data = data else {
+                completion(.failure(URLError(.badServerResponse)))
+                return
+            }
+
+            completion(.success(data))
+        })
     }
 
     private static func createTask(
         requestURL: URL,
-        headers: [String: String],
+        headers: Network.HTTPHeader,
         cachePolicy: URLRequest.CachePolicy = .useProtocolCachePolicy,
-        httpMethod: String,
+        httpMethod: Network.HTTPMethod,
         taskHandlingBlock: ((URLSessionDataTask) -> ())? = nil,
-        success: @escaping (Data?) -> (),
-        failure: @escaping (Error) -> ()
+        failure: @escaping (Error) -> (),
+        success: @escaping (Data?) -> ()
     ) {
 
-            let request: URLRequest =  URLRequest(url: requestURL, cachePolicy: cachePolicy, timeoutInterval: shorterTimeOut)
+            let request: URLRequest =  URLRequest(url: requestURL, cachePolicy: cachePolicy, timeoutInterval: customTimeoutInterval)
 
             let task = urlSession.dataTask(with: request) { (data, response, error) in
 
@@ -137,7 +81,7 @@ class Network {
             task.resume()
     }
 
-    private static let shorterTimeOut: TimeInterval = 30
+    private static let customTimeoutInterval: TimeInterval = 30
 
     private static let urlSession = URLSession(configuration: .default)
 }

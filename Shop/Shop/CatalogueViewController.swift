@@ -9,33 +9,42 @@
 import Foundation
 import UIKit
 
-class ListController: UITableViewController, UpdatesDelegate {
-    
-    private var datasource: CatalogDatasource?
+class CatalogueViewController: UITableViewController {
 
-    init(datasource: CatalogDatasource? = nil) {
-        super.init(style: .plain)
-
+    init(datasource: CatalogueDatasource = CatalogFetcher()) {
         self.datasource = datasource
-        self.datasource?.delegate = self
+
+        super.init(style: .plain)
     }
 
     required init?(coder: NSCoder) { nil }
 
-    private var computedDatasource
-
     override func viewDidLoad() {
         super.viewDidLoad()
 
-        navigationItem.title = "Catalogue"
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appDidBecomeActiveNotification),
+            name: UIApplication.didBecomeActiveNotification,
+            object: nil
+        )
 
-        tableView.refreshControl = UIRefreshControl()
-        tableView.refreshControl?.addTarget(self, action: #selector(refresh), for: .valueChanged)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appWillResignActiveNotification),
+            name: UIApplication.willResignActiveNotification,
+            object: nil
+        )
 
-        tableView.tableFooterView = UIView()
+        navigationItem.title = CustomString.catalogTitle
 
         tableView.register(ImagedItemCell.self, forCellReuseIdentifier: ImagedItemCell.reuseID)
         tableView.register(SpinnerCell.self, forCellReuseIdentifier: SpinnerCell.reuseID)
+
+        tableView.tableFooterView = UIView() // Removes extra separator lines in table view
+
+        tableView.refreshControl = UIRefreshControl()
+        tableView.refreshControl?.addTarget(self, action: #selector(refresh), for: .valueChanged)
 
         tableView.refreshControl?.beginRefreshing()
         refresh()
@@ -50,14 +59,13 @@ class ListController: UITableViewController, UpdatesDelegate {
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         switch section {
         case 0:
-            return datasource?.items.count ?? 0
+            return datasource.items.count
         default:
-            return (datasource?.isNextPageUnavailable ?? true) ? 0 : 1
+            return datasource.isNextPageAvailable ? 1 : 0
         }
     }
 
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        guard let datasource = datasource else { return UITableViewCell() }
 
         switch indexPath.section {
         case 0:
@@ -82,8 +90,6 @@ class ListController: UITableViewController, UpdatesDelegate {
     }
 
     override func tableView(_ tableView: UITableView, willDisplay cell: UITableViewCell, forRowAt indexPath: IndexPath) {
-        guard let datasource = datasource else { return }
-
         switch indexPath.section {
         case 0:
             guard let id = datasource.items[indexPath.row]?.item_id,
@@ -91,13 +97,13 @@ class ListController: UITableViewController, UpdatesDelegate {
 
             datasource.fetchImage(id) { result in
                 DispatchQueue.main.async { [weak self] in
-                    guard self != nil else { return }
+                    guard let self = self else { return }
                     switch result {
-                    case .failure(let error):
-                        print("Failed to fetch image ", error)
+                    case .failure(_):
+                        self.presentConfirmAlert(CustomString.errorAlertTitle, message: CustomString.faileToLoadImage)
 
                     case .success(let image):
-                        cell.update(id: id, image: image)
+                        try? cell.update(id: id, image: image)
                     }
                 }
             }
@@ -107,33 +113,33 @@ class ListController: UITableViewController, UpdatesDelegate {
 
             cell.startSpinning()
 
-            loadContent(page: pageNumber(for: indexPath))
+            loadContent(page: datasource.currentPage + 1) { [weak self] in
+                self?.insertRows()
+            }
         }
+    }
+
+    private var isRefreshing: Bool {
+        tableView.refreshControl?.isRefreshing ?? false
     }
 
     private func spinnerCell(for indexPath: IndexPath) -> UITableViewCell {
         tableView.dequeueReusableCell(withIdentifier: SpinnerCell.reuseID, for: indexPath)
     }
 
-    private func pageNumber(for indexPath: IndexPath) -> Int {
-        guard let datasource = datasource else { return initialPage }
+    // MARK: - Datasource
 
-        return datasource.currentPage + 1
-    }
+    private var datasource: CatalogueDatasource
 
     // MARK: - Content loading
 
     private func loadContent(page: Int, completion: EmptyBlock? = nil) {
-        guard let datasource = datasource else {
-            completion?()
-            return
-        }
 
         datasource.fetchItems(page) { error in
             DispatchQueue.main.async { [weak self] in
                 guard error == nil else {
                     if (error! as NSError).code != URLError.cancelled.rawValue {
-                        self?.presentConfirmAlert("Failed to fetch catalogue!")
+                        self?.presentConfirmAlert(CustomString.errorAlertTitle, message: CustomString.faileToLoadCatalogue)
                     }
                     return
                 }
@@ -146,57 +152,58 @@ class ListController: UITableViewController, UpdatesDelegate {
         loadContent(page: initialPage) {
             DispatchQueue.main.async { [weak self] in
                 self?.tableView.refreshControl?.endRefreshing()
+                self?.reload()
             }
         }
     }
 
-    // MARK: Updates Delegate
+    // MARK: - UI Updates
 
     private let initialPage: Int = 0
 
-    func updaterDidInsert(at range: Range<Int>) {
+    func insertRows() {
+        guard datasource.items.count > tableView.numberOfRows(inSection: 0) else { return }
+        
         var indexPaths: [IndexPath] = []
 
-        for i in range {
+        for i in tableView.numberOfRows(inSection: 0) ..< datasource.items.count {
             indexPaths.append(IndexPath(row: i, section: 0))
         }
 
-        guard !indexPaths.isEmpty else { return }
+        guard !indexPaths.isEmpty, !isRefreshing else { return }
 
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            guard !(self.tableView.refreshControl?.isRefreshing ?? false) else { return }
+        tableView.performBatchUpdates({
+            tableView.insertRows(at: indexPaths, with: .automatic)
 
-            self.tableView.performBatchUpdates({
-                self.tableView.insertRows(at: indexPaths, with: .automatic)
+            if !datasource.isNextPageAvailable {
+                self.tableView.deleteRows(at: [IndexPath(row: 0, section: 1)], with: .automatic)
+            }
+        })
+    }
 
-                if (self.datasource?.isNextPageUnavailable ?? true) {
-                    self.tableView.deleteRows(at: [IndexPath(row: 0, section: 1)], with: .automatic)
-                }
+    func deleteSpinnerRow() {
+        guard !isRefreshing else { return }
+
+        if tableView.numberOfRows(inSection: 1) > 0 {
+            tableView.performBatchUpdates({
+                tableView.deleteRows(at: [IndexPath(row: 0, section: 1)], with: .automatic)
             })
         }
     }
 
-    func updaterDidLoadEverything() {
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            guard !(self.tableView.refreshControl?.isRefreshing ?? false) else { return }
-
-            if self.tableView.numberOfRows(inSection: 1) > 0 {
-                self.tableView.performBatchUpdates({
-                    self.tableView.deleteRows(at: [IndexPath(row: 0, section: 1)], with: .automatic)
-                })
-            }
-        }
+    func reload() {
+        guard !isRefreshing else { return }
+        tableView.reloadData()
     }
 
-    func updaterDidReload() {
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            guard !(self.tableView.refreshControl?.isRefreshing ?? false) else { return }
+    // MARK: - Application Notifications
 
-            self.tableView.reloadData()
-        }
+    @objc private func appDidBecomeActiveNotification() {
+        tableView.reloadData() // TODO: handle updates smoother
+    }
+
+    @objc private func appWillResignActiveNotification() {
+        tableView.refreshControl?.endRefreshing()
     }
 
 }

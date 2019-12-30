@@ -16,7 +16,7 @@ class ImagedItemCell: UITableViewCell, SpinnerShowable {
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: .default, reuseIdentifier: ImagedItemCell.reuseID)
 
-        let mainStack = UIStackView.init(axis: .vertical, alignment: .center, distribution: .fill, spacing: 20)
+        let mainStack = UIStackView.init(axis: .vertical, alignment: .center, distribution: .fill, spacing: padding)
         let priceStack = UIStackView.init(axis: .horizontal, alignment: .center, distribution: .fillEqually)
 
         descriptionLabel.numberOfLines = 0
@@ -58,13 +58,14 @@ class ImagedItemCell: UITableViewCell, SpinnerShowable {
         titleLabel.text = title
         descriptionLabel.text = description
 
-        priceLabel.attributedText = attributedText(description: "Price: ", text: price)
-
-        categoryLabel.attributedText = attributedText(description: "Category: ", text: category)
+        priceLabel.attributedText = attributedText(description: CustomString.priceDescriptionText, text: price)
+        categoryLabel.attributedText = attributedText(description: CustomString.categoryDescriptionText, text: category)
     }
 
-    func update(id: String, image: UIImage?) {
-        guard id == self.id else { return }
+    func update(id: String, image: UIImage?) throws {
+        guard id == self.id else {
+            throw CustomError.invalidUpdate
+        }
 
         pictureView.image = image
         removeSpinner()
@@ -76,7 +77,7 @@ class ImagedItemCell: UITableViewCell, SpinnerShowable {
 
     private lazy var titleLabel: UILabel = {
         let label = UILabel()
-        label.font = UIFont.systemFont(ofSize: UIFont.systemFontSize + 2, weight: .bold)
+        label.font = UIFont.customTitleFont
         return label
     }()
 
@@ -103,4 +104,3 @@ class ImagedItemCell: UITableViewCell, SpinnerShowable {
 
     var spinner: UIActivityIndicatorView?
 }
-

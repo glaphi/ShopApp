@@ -8,13 +8,7 @@
 
 import Foundation
 
-struct CategoryEnvelop: Codable {
-
-    let categories: [String]
-
-}
-
-enum Currency: String, Codable {
+enum Currency: String, Decodable {
 
     case usd = "$"
     case eur = "€"
@@ -22,14 +16,14 @@ enum Currency: String, Codable {
 
 }
 
-struct Price: Codable {
+struct Price: Decodable {
 
     let value: Double
     let currency: Currency
 
 }
 
-struct Item: Codable {
+struct Item: Decodable {
 
     let item_id: String
     let title: String
@@ -42,7 +36,7 @@ struct Item: Codable {
     
 }
 
-struct CatalogueEnvelop: Codable {
+struct CatalogueEnvelop: Decodable {
 
     let result: [Item]
     let next: URL?
